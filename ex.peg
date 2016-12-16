@@ -1,0 +1,13 @@
+package peg_ex
+
+type PegEx Peg {
+    Acc   string
+    Words []string
+}
+
+LANG       <- WORD (PIPE WORD)* EOF
+WORD       <- LETTER_DEF+
+LETTER_DEF <- 'v=' LETTER ';'
+LETTER     <- <[A-Z]>                  { p.Push(buffer[begin:end]) }
+PIPE       <- '|'                      { p.Flush() }
+EOF        <- !.                       { p.Flush() }

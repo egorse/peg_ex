@@ -1,0 +1,368 @@
+package peg_ex
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+)
+
+const endSymbol rune = 1114112
+
+/* The rule types inferred from the grammar are below. */
+type pegRule uint8
+
+const (
+	ruleUnknown pegRule = iota
+	ruleLANG
+	ruleWORD
+	ruleLETTER_DEF
+	ruleLETTER
+	rulePIPE
+	ruleEOF
+	rulePegText
+)
+
+var rul3s = [...]string{
+	"Unknown",
+	"LANG",
+	"WORD",
+	"LETTER_DEF",
+	"LETTER",
+	"PIPE",
+	"EOF",
+	"PegText",
+	"Action0",
+	"Action1",
+	"Action2",
+}
+
+type token32 struct {
+	pegRule
+	begin, end uint32
+}
+
+func (t *token32) String() string {
+	return fmt.Sprintf("\x1B[34m%v\x1B[m %v %v", rul3s[t.pegRule], t.begin, t.end)
+}
+
+type node32 struct {
+	token32
+	up, next *node32
+}
+
+func (node *node32) Print(buffer string) {
+	var print func(node *node32, depth int)
+	print = func(node *node32, depth int) {
+		for node != nil {
+			for c := 0; c < depth; c++ {
+				fmt.Printf(" ")
+			}
+			fmt.Printf("\x1B[34m%v\x1B[m %v\n", rul3s[node.pegRule], strconv.Quote(string(([]rune(buffer)[node.begin:node.end]))))
+			if node.up != nil {
+				print(node.up, depth+1)
+			}
+			node = node.next
+		}
+	}
+	print(node, 0)
+}
+
+type PegEx struct {
+	Acc   string
+	Words []string
+
+	Buffer string
+	buffer []rune
+	rules  [11]func() bool
+	parse  func(rule ...int) error
+	reset  func()
+	Pretty bool
+}
+
+func (p *PegEx) Parse(rule ...int) error {
+	return p.parse(rule...)
+}
+
+func (p *PegEx) Reset() {
+	p.reset()
+}
+
+type textPosition struct {
+	line, symbol int
+}
+
+type textPositionMap map[int]textPosition
+
+func translatePositions(buffer []rune, positions []int) textPositionMap {
+	length, translations, j, line, symbol := len(positions), make(textPositionMap, len(positions)), 0, 1, 0
+	sort.Ints(positions)
+
+search:
+	for i, c := range buffer {
+		if c == '\n' {
+			line, symbol = line+1, 0
+		} else {
+			symbol++
+		}
+		if i == positions[j] {
+			translations[positions[j]] = textPosition{line, symbol}
+			for j++; j < length; j++ {
+				if i != positions[j] {
+					continue search
+				}
+			}
+			break search
+		}
+	}
+
+	return translations
+}
+
+type parseError struct {
+	p   *PegEx
+	max token32
+}
+
+func (e *parseError) Error() string {
+	tokens, error := []token32{e.max}, "\n"
+	positions, p := make([]int, 2*len(tokens)), 0
+	for _, token := range tokens {
+		positions[p], p = int(token.begin), p+1
+		positions[p], p = int(token.end), p+1
+	}
+	translations := translatePositions(e.p.buffer, positions)
+	format := "parse error near %v (line %v symbol %v - line %v symbol %v):\n%v\n"
+	if e.p.Pretty {
+		format = "parse error near \x1B[34m%v\x1B[m (line %v symbol %v - line %v symbol %v):\n%v\n"
+	}
+	for _, token := range tokens {
+		begin, end := int(token.begin), int(token.end)
+		error += fmt.Sprintf(format,
+			rul3s[token.pegRule],
+			translations[begin].line, translations[begin].symbol,
+			translations[end].line, translations[end].symbol,
+			strconv.Quote(string(e.p.buffer[begin:end])))
+	}
+
+	return error
+}
+
+func (p *PegEx) Init() {
+	var (
+		max                  token32
+		position, tokenIndex uint32
+		buffer               []rune
+	)
+	p.reset = func() {
+		max = token32{}
+		position, tokenIndex = 0, 0
+
+		p.buffer = []rune(p.Buffer)
+		if len(p.buffer) == 0 || p.buffer[len(p.buffer)-1] != endSymbol {
+			p.buffer = append(p.buffer, endSymbol)
+		}
+		buffer = p.buffer
+	}
+	p.reset()
+
+	_rules := p.rules
+	p.parse = func(rule ...int) error {
+		r := 1
+		if len(rule) > 0 {
+			r = rule[0]
+		}
+		matches := p.rules[r]()
+		if matches {
+			return nil
+		}
+		return &parseError{p, max}
+	}
+
+	add := func(rule pegRule, begin uint32) {
+		tokenIndex++
+		if begin != position && position > max.end {
+			max = token32{rule, begin, position}
+		}
+	}
+
+	matchDot := func() bool {
+		if buffer[position] != endSymbol {
+			position++
+			return true
+		}
+		return false
+	}
+
+	/*matchChar := func(c byte) bool {
+		if buffer[position] == c {
+			position++
+			return true
+		}
+		return false
+	}*/
+
+	/*matchRange := func(lower byte, upper byte) bool {
+		if c := buffer[position]; c >= lower && c <= upper {
+			position++
+			return true
+		}
+		return false
+	}*/
+
+	_rules = [...]func() bool{
+		nil,
+		/* 0 LANG <- <(WORD (PIPE WORD)* EOF)> */
+		func() bool {
+			position0, tokenIndex0 := position, tokenIndex
+			{
+				position1 := position
+				if !_rules[ruleWORD]() {
+					goto l0
+				}
+			l2:
+				{
+					position3, tokenIndex3 := position, tokenIndex
+					{
+						position4 := position
+						if buffer[position] != rune('|') {
+							goto l3
+						}
+						position++
+						{
+							//add(ruleAction1, position)
+							p.Flush()
+						}
+						add(rulePIPE, position4)
+					}
+					if !_rules[ruleWORD]() {
+						goto l3
+					}
+					goto l2
+				l3:
+					position, tokenIndex = position3, tokenIndex3
+				}
+				{
+					position6 := position
+					{
+						position7, tokenIndex7 := position, tokenIndex
+						if !matchDot() {
+							goto l7
+						}
+						goto l0
+					l7:
+						position, tokenIndex = position7, tokenIndex7
+					}
+					{
+						//add(ruleAction2, position)
+						p.Flush()
+					}
+					add(ruleEOF, position6)
+				}
+				add(ruleLANG, position1)
+			}
+			return true
+		l0:
+			position, tokenIndex = position0, tokenIndex0
+			return false
+		},
+		/* 1 WORD <- <LETTER_DEF+> */
+		func() bool {
+			position9, tokenIndex9 := position, tokenIndex
+			{
+				position10 := position
+				{
+					position13 := position
+					if buffer[position] != rune('v') {
+						goto l9
+					}
+					position++
+					if buffer[position] != rune('=') {
+						goto l9
+					}
+					position++
+					{
+						position14 := position
+						{
+							position15 := position
+							if c := buffer[position]; c < rune('A') || c > rune('Z') {
+								goto l9
+							}
+							position++
+							add(rulePegText, position15)
+						}
+						{
+							//add(ruleAction0, position)
+							p.Push(string(buffer[position-1 : position]))
+						}
+						add(ruleLETTER, position14)
+					}
+					if buffer[position] != rune(';') {
+						goto l9
+					}
+					position++
+					add(ruleLETTER_DEF, position13)
+				}
+			l11:
+				{
+					position12, tokenIndex12 := position, tokenIndex
+					{
+						position17 := position
+						if buffer[position] != rune('v') {
+							goto l12
+						}
+						position++
+						if buffer[position] != rune('=') {
+							goto l12
+						}
+						position++
+						{
+							position18 := position
+							{
+								position19 := position
+								if c := buffer[position]; c < rune('A') || c > rune('Z') {
+									goto l12
+								}
+								position++
+								add(rulePegText, position19)
+							}
+							{
+								//add(ruleAction0, position)
+								p.Push(string(buffer[position-1 : position]))
+							}
+							add(ruleLETTER, position18)
+						}
+						if buffer[position] != rune(';') {
+							goto l12
+						}
+						position++
+						add(ruleLETTER_DEF, position17)
+					}
+					goto l11
+				l12:
+					position, tokenIndex = position12, tokenIndex12
+				}
+				add(ruleWORD, position10)
+			}
+			return true
+		l9:
+			position, tokenIndex = position9, tokenIndex9
+			return false
+		},
+		/* 2 LETTER_DEF <- <('v' '=' LETTER ';')> */
+		nil,
+		/* 3 LETTER <- <(<[A-Z]> Action0)> */
+		nil,
+		/* 4 PIPE <- <('|' Action1)> */
+		nil,
+		/* 5 EOF <- <(!. Action2)> */
+		nil,
+		nil,
+		/* 8 Action0 <- <{ p.Push(buffer[begin:end]) }> */
+		nil,
+		/* 9 Action1 <- <{ p.Flush() }> */
+		nil,
+		/* 10 Action2 <- <{ p.Flush() }> */
+		nil,
+	}
+	p.rules = _rules
+}
