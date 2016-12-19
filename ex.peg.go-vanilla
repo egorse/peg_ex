@@ -226,7 +226,7 @@ func (p *PegEx) Execute() {
 			text = string(_buffer[begin:end])
 
 		case ruleAction0:
-			p.Push(buffer[begin:end])
+			p.Push(text)
 		case ruleAction1:
 			p.Flush()
 		case ruleAction2:
@@ -447,7 +447,7 @@ func (p *PegEx) Init() {
 		/* 5 EOF <- <(!. Action2)> */
 		nil,
 		nil,
-		/* 8 Action0 <- <{ p.Push(buffer[begin:end]) }> */
+		/* 8 Action0 <- <{ p.Push(text) }> */
 		nil,
 		/* 9 Action1 <- <{ p.Flush() }> */
 		nil,

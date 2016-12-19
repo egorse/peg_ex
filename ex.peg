@@ -8,6 +8,6 @@ type PegEx Peg {
 LANG       <- WORD (PIPE WORD)* EOF
 WORD       <- LETTER_DEF+
 LETTER_DEF <- 'v=' LETTER ';'
-LETTER     <- <[A-Z]>                  { p.Push(buffer[begin:end]) }
+LETTER     <- <[A-Z]>                  { p.Push(text) }
 PIPE       <- '|'                      { p.Flush() }
 EOF        <- !.                       { p.Flush() }

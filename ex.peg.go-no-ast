@@ -20,6 +20,9 @@ const (
 	rulePIPE
 	ruleEOF
 	rulePegText
+	ruleAction0
+	ruleAction1
+	ruleAction2
 )
 
 var rul3s = [...]string{
@@ -43,28 +46,6 @@ type token32 struct {
 
 func (t *token32) String() string {
 	return fmt.Sprintf("\x1B[34m%v\x1B[m %v %v", rul3s[t.pegRule], t.begin, t.end)
-}
-
-type node32 struct {
-	token32
-	up, next *node32
-}
-
-func (node *node32) Print(buffer string) {
-	var print func(node *node32, depth int)
-	print = func(node *node32, depth int) {
-		for node != nil {
-			for c := 0; c < depth; c++ {
-				fmt.Printf(" ")
-			}
-			fmt.Printf("\x1B[34m%v\x1B[m %v\n", rul3s[node.pegRule], strconv.Quote(string(([]rune(buffer)[node.begin:node.end]))))
-			if node.up != nil {
-				print(node.up, depth+1)
-			}
-			node = node.next
-		}
-	}
-	print(node, 0)
 }
 
 type PegEx struct {
@@ -152,6 +133,7 @@ func (p *PegEx) Init() {
 		max                  token32
 		position, tokenIndex uint32
 		buffer               []rune
+		text                 string
 	)
 	p.reset = func() {
 		max = token32{}
@@ -229,7 +211,6 @@ func (p *PegEx) Init() {
 						}
 						position++
 						{
-							//add(ruleAction1, position)
 							p.Flush()
 						}
 						add(rulePIPE, position4)
@@ -253,7 +234,6 @@ func (p *PegEx) Init() {
 						position, tokenIndex = position7, tokenIndex7
 					}
 					{
-						//add(ruleAction2, position)
 						p.Flush()
 					}
 					add(ruleEOF, position6)
@@ -288,11 +268,12 @@ func (p *PegEx) Init() {
 								goto l9
 							}
 							position++
-							add(rulePegText, position15)
+							begin := position15
+							end := position
+							text = string(buffer[begin:end])
 						}
 						{
-							//add(ruleAction0, position)
-							p.Push(string(buffer[position-1 : position]))
+							p.Push(text)
 						}
 						add(ruleLETTER, position14)
 					}
@@ -323,11 +304,12 @@ func (p *PegEx) Init() {
 									goto l12
 								}
 								position++
-								add(rulePegText, position19)
+								begin := position19
+								end := position
+								text = string(buffer[begin:end])
 							}
 							{
-								//add(ruleAction0, position)
-								p.Push(string(buffer[position-1 : position]))
+								p.Push(text)
 							}
 							add(ruleLETTER, position18)
 						}
@@ -357,7 +339,7 @@ func (p *PegEx) Init() {
 		/* 5 EOF <- <(!. Action2)> */
 		nil,
 		nil,
-		/* 8 Action0 <- <{ p.Push(buffer[begin:end]) }> */
+		/* 8 Action0 <- <{ p.Push(text) }> */
 		nil,
 		/* 9 Action1 <- <{ p.Flush() }> */
 		nil,
